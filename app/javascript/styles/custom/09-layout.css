@@ -1,0 +1,31 @@
+.columns-area__panels__main,
+.column,
+.drawer {
+  background: var(--md-bg-panel) !important;
+  border: 1px solid var(--md-border) !important;
+  border-radius: var(--md-radius-lg) !important;
+  box-shadow: var(--md-shadow-sm) !important;
+  overflow: hidden !important;
+}
+
+.column-header {
+  background: var(--md-bg-panel) !important;
+  border-bottom: 1px solid var(--md-border) !important;
+  border-radius: var(--md-radius-lg) var(--md-radius-lg) 0 0 !important;
+  padding: var(--md-space-4) var(--md-space-5) !important;
+  font-weight: var(--md-font-weight-bold) !important;
+  font-size: var(--md-font-size-lg) !important;
+}
+
+.columns-area__panels__pane--start,
+.columns-area__panels__pane--end {
+  padding: 0 !important;
+}
+
+@media (max-width: 895px) {
+  .columns-area__panels {
+    padding: var(--md-space-2) !important;
+    gap: var(--md-space-2) !important;
+  }
+  .navigation-panel { width: 100% !important; }
+}

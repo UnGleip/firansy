@@ -1,0 +1,46 @@
+.status-card,
+.notification-group__card,
+.explore__grid .card {
+  background: var(--md-bg-panel) !important;
+  border: 1px solid var(--md-border) !important;
+  border-radius: var(--md-radius-md) !important;
+  overflow: hidden !important;
+  box-shadow: var(--md-shadow-sm) !important;
+  transition: box-shadow var(--md-transition), transform var(--md-transition) !important;
+}
+
+.status-card:hover {
+  box-shadow: var(--md-shadow-md) !important;
+  transform: translateY(-1px);
+}
+
+.status-card__image,
+.status-card img {
+  border-radius: 0 !important;
+}
+
+.status-card__title {
+  color: var(--md-text-primary) !important;
+  font-weight: var(--md-font-weight-bold) !important;
+  font-size: var(--md-font-size-base) !important;
+}
+
+.status-card__description,
+.status-card__host {
+  color: var(--md-text-tertiary) !important;
+  font-size: var(--md-font-size-sm) !important;
+}
+
+.explore__grid,
+.trends__grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  gap: var(--md-space-5) !important;
+}
+
+.trends__item {
+  border-radius: var(--md-radius-md) !important;
+  padding: var(--md-space-3) var(--md-space-4) !important;
+  transition: background var(--md-transition) !important;
+}
+.trends__item:hover { background: var(--md-bg-subtle) !important; }

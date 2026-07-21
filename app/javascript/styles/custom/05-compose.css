@@ -1,0 +1,54 @@
+.compose-form,
+.compose-panel {
+  background: var(--md-bg-panel) !important;
+  border: 1px solid var(--md-border) !important;
+  border-radius: var(--md-radius-lg) !important;
+  box-shadow: var(--md-shadow-sm) !important;
+  padding: var(--md-space-4) !important;
+}
+
+.compose-form__autosuggest-wrapper,
+.autosuggest-textarea__textarea {
+  background: transparent !important;
+  border: none !important;
+  font-size: var(--md-font-size-lg) !important;
+  color: var(--md-text-primary) !important;
+}
+
+.autosuggest-textarea__textarea::placeholder {
+  color: var(--md-text-tertiary) !important;
+}
+
+.compose-form__buttons-wrapper,
+.compose-form__buttons {
+  border-top: 1px solid var(--md-border) !important;
+  margin-top: var(--md-space-3) !important;
+  padding-top: var(--md-space-3) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--md-space-2) !important;
+}
+
+.compose-form__buttons .icon-button {
+  color: var(--md-accent) !important;
+  border-radius: var(--md-radius-sm) !important;
+  padding: var(--md-space-1) !important;
+}
+.compose-form__buttons .icon-button:hover {
+  background: var(--md-accent-soft) !important;
+}
+
+.compose-form button[type="submit"],
+.compose-form .button {
+  background: var(--md-accent) !important;
+  color: var(--md-text-inverse) !important;
+  border: none !important;
+  border-radius: var(--md-radius-pill) !important;
+  font-weight: var(--md-font-weight-bold) !important;
+  padding: var(--md-space-2) var(--md-space-5) !important;
+  transition: background var(--md-transition) !important;
+}
+.compose-form button[type="submit"]:hover,
+.compose-form .button:hover {
+  background: var(--md-accent-hover) !important;
+}
