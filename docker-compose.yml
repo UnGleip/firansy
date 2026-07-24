@@ -28,12 +28,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # ★ اینجا رو عوض کن تا آینه‌ات عوض بشه ★
-        DEBIAN_MIRROR: "deb.debian.org/debian"          # برای سیستم عامل
-        RUBYGEMS_MIRROR: "https://rubygems.org"        # برای Gem های Ruby
-        NPM_MIRROR: "https://registry.npmjs.org/"      # برای پکیج‌های Node.js
-        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: bundle exec puma -C config/puma.rb
@@ -43,7 +37,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "curl -s --noproxy localhost localhost:3000/health | grep -q 'OK' || exit 1"]
     ports:
-      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:3100:3100'
     depends_on:
       - db
       - redis
@@ -54,11 +48,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        DEBIAN_MIRROR: "deb.debian.org/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"
-        NPM_MIRROR: "https://registry.npmjs.org/"
-        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: bundle exec sidekiq
@@ -77,11 +66,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        DEBIAN_MIRROR: "deb.debian.org/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"
-        NPM_MIRROR: "https://registry.npmjs.org/"
-        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: node ./streaming/index.js
