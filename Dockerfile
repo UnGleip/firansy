@@ -1,52 +1,32 @@
 # syntax=docker/dockerfile:1.18
 
-# This file is designed for production server deployment, not local development work
-# For a containerized local dev environment, see: https://github.com/mastodon/mastodon/blob/main/docs/DEVELOPMENT.md#docker
-
-# Please see https://docs.docker.com/engine/reference/builder for information about
-# the extended buildx capabilities used in this file.
-# Make sure multiarch TARGETPLATFORM is available for interpolation
-# See: https://docs.docker.com/build/building/multi-platform/
+# =============================================================================
+# تنظیمات پایه با قابلیت تغییر رجیستری (برای دور زدن تحریم)
+# =============================================================================
+ARG BASE_REGISTRY="docker.io"
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
-ARG BASE_REGISTRY="docker.io"
 
-# Ruby image to use for base image, change with [--build-arg RUBY_VERSION="4.0.x"]
-# renovate: datasource=docker depName=docker.io/ruby
-ARG RUBY_VERSION="4.0.6"
-# # Node.js version to use in base image, change with [--build-arg NODE_MAJOR_VERSION="22"]
-# renovate: datasource=node-version depName=node
-ARG NODE_MAJOR_VERSION="24"
-# Debian image to use for base image, change with [--build-arg DEBIAN_VERSION="trixie"]
-ARG DEBIAN_VERSION="trixie"
-# Node.js image to use for base image based on combined variables (ex: 20-trixie-slim)
+ARG RUBY_VERSION="3.2.2"
+ARG NODE_MAJOR_VERSION="20"
+ARG DEBIAN_VERSION="bullseye"   # استفاده از Debian 11 (پایدار)
+
+# تصاویر پایه از رجیستری قابل تنظیم
 FROM ${BASE_REGISTRY}/node:${NODE_MAJOR_VERSION}-${DEBIAN_VERSION}-slim AS node
-# Ruby image to use for base image based on combined variables (ex: 3.4.x-slim-trixie)
 FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS ruby
 
-# Resulting version string is vX.X.X-MASTODON_VERSION_PRERELEASE+MASTODON_VERSION_METADATA
-# Example: v4.3.0-nightly.2023-11-09+pr-123456
-# Overwrite existence of 'alpha.X' in version.rb [--build-arg MASTODON_VERSION_PRERELEASE="nightly.2023-11-09"]
+# =============================================================================
+# متغیرهای ساخت (قابل تنظیم با --build-arg)
+# =============================================================================
 ARG MASTODON_VERSION_PRERELEASE=""
-# Append build metadata or fork information to version.rb [--build-arg MASTODON_VERSION_METADATA="pr-123456"]
 ARG MASTODON_VERSION_METADATA=""
-# Will be available as Mastodon::Version.source_commit
 ARG SOURCE_COMMIT=""
-
-# Allow Ruby on Rails to serve static files
-# See: https://docs.joinmastodon.org/admin/config/#rails_serve_static_files
 ARG RAILS_SERVE_STATIC_FILES="true"
-# Allow to use YJIT compiler
-# See: https://github.com/ruby/ruby/blob/v3_2_4/doc/yjit/yjit.md
 ARG RUBY_YJIT_ENABLE="1"
-# Timezone used by the Docker container and runtime, change with [--build-arg TZ=Europe/Berlin]
-ARG TZ="Etc/UTC"
-# Linux UID (user id) for the mastodon user, change with [--build-arg UID=1234]
+ARG TZ="Asia/Tehran"
 ARG UID="991"
-# Linux GID (group id) for the mastodon user, change with [--build-arg GID=1234]
 ARG GID="991"
 
-# Apply Mastodon build options based on options above
 ENV \
   MASTODON_VERSION_PRERELEASE="${MASTODON_VERSION_PRERELEASE}" \
   MASTODON_VERSION_METADATA="${MASTODON_VERSION_METADATA}" \
@@ -55,362 +35,141 @@ ENV \
   RUBY_YJIT_ENABLE="${RUBY_YJIT_ENABLE}" \
   TZ="${TZ}"
 
-# Configure runtime environment
-# BIND: IP to bind Mastodon to when serving traffic
-# NODE_ENV/RAILS_ENV: production settings for Node.js and Ruby on Rails
-# DEBIAN_FRONTEND: suppress interactive prompts
-# PATH: add Ruby and Mastodon installation directories
-# MALLOC_CONF: optimize jemalloc 5.x performance
-# MASTODON_SIDEKIQ_READY_FILENAME: Sidekiq readiness check filename for Kubernetes
 ENV \
   BIND="0.0.0.0" \
   NODE_ENV="production" \
   RAILS_ENV="production" \
   DEBIAN_FRONTEND="noninteractive" \
   PATH="${PATH}:/opt/ruby/bin:/opt/mastodon/bin" \
-  MALLOC_CONF="narenas:2,background_thread:true,thp:never,dirty_decay_ms:1000,muzzy_decay_ms:0" \
-  MASTODON_SIDEKIQ_READY_FILENAME=sidekiq_process_has_started_and_will_begin_processing_jobs
+  MALLOC_CONF="narenas:2,background_thread:true,thp:never,dirty_decay_ms:1000,muzzy_decay_ms:0"
 
-# Set default shell used for running commands
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
+# =============================================================================
+# مرحله ۱: تنظیم مخازن Apt به میرور ArvanCloud
+# =============================================================================
+FROM ruby AS base
+
 ARG TARGETPLATFORM
+ARG DEBIAN_VERSION
 
-RUN echo "Target platform is $TARGETPLATFORM"
+# حذف فایل‌های پاک‌کننده کش
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
 
-RUN \
-  # Remove automatic apt cache Docker cleanup scripts
-  rm -f /etc/apt/apt.conf.d/docker-clean; \
-  # Sets timezone
-  echo "${TZ}" > /etc/localtime; \
-  # Creates mastodon user/group and sets home directory
-  groupadd -g "${GID}" mastodon; \
-  useradd -l -u "${UID}" -g "${GID}" -m -d /opt/mastodon mastodon; \
-  # Creates /mastodon symlink to /opt/mastodon
-  ln -s /opt/mastodon /mastodon;
+# تنظیم مخازن Debian برای استفاده از آینه ArvanCloud
+RUN echo "deb http://mirror.arvancloud.com/debian/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://mirror.arvancloud.com/debian/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://mirror.arvancloud.com/debian-security/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
 
-# Set /opt/mastodon as working directory
+# نصب وابستگی‌های اصلی سیستم
+RUN apt-get update -qq && \
+    apt-get dist-upgrade -yq && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        file \
+        git \
+        libjemalloc2 \
+        procps \
+        tini \
+        tzdata \
+        wget \
+        # وابستگی‌های Ruby و Mastodon
+        libexpat1 \
+        libglib2.0-0 \
+        libicu67 \
+        libidn11 \
+        libpq5 \
+        libreadline8 \
+        libssl1.1 \
+        libyaml-0-2 \
+        # libvips (از مخازن Debian)
+        libvips42 \
+        # ffmpeg (از مخازن Debian)
+        ffmpeg \
+        # ابزارهای کمکی
+        imagemagick \
+        postgresql-client \
+        redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# پچ کردن Ruby برای استفاده از jemalloc
+RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby || true
+
+# ایجاد کاربر mastodon
+RUN groupadd -g "${GID}" mastodon && \
+    useradd -l -u "${UID}" -g "${GID}" -m -d /opt/mastodon mastodon && \
+    ln -s /opt/mastodon /mastodon
+
 WORKDIR /opt/mastodon
 
-# hadolint ignore=DL3008,DL3005
-RUN \
-  # Mount Apt cache and lib directories from Docker buildx caches
-  --mount=type=cache,id=apt-cache-${TARGETPLATFORM},target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,id=apt-lib-${TARGETPLATFORM},target=/var/lib/apt,sharing=locked \
-  # Update package list and upgrade system packages
-  apt-get update; \
-  apt-get dist-upgrade -yq; \
-  # Install jemalloc and other necessary components
-  apt-get install -y --no-install-recommends \
-  curl \
-  file \
-  libjemalloc2 \
-  patchelf \
-  procps \
-  tini \
-  tzdata \
-  wget \
-  # Mastodon components
-  libexpat1 \
-  libglib2.0-0t64 \
-  libicu76 \
-  libidn12 \
-  libpq5 \
-  libreadline8t64 \
-  libssl3t64 \
-  libyaml-0-2 \
-  # libvips components
-  libcgif0 \
-  libexif12 \
-  libheif1 \
-  libhwy1t64 \
-  libimagequant0 \
-  libjpeg62-turbo \
-  liblcms2-2 \
-  libspng0 \
-  libtiff6 \
-  libwebp7 \
-  libwebpdemux2 \
-  libwebpmux3 \
-  # ffmpeg components
-  libdav1d7 \
-  libmp3lame0 \
-  libopencore-amrnb0 \
-  libopencore-amrwb0 \
-  libopus0 \
-  libsnappy1v5 \
-  libtheora0 \
-  libvorbis0a \
-  libvorbisenc2 \
-  libvorbisfile3 \
-  libvpx9 \
-  libx264-164 \
-  libx265-215 \
-  ; \
-  # Patch Ruby to use jemalloc
-  patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby; \
-  # Discard patchelf after use
-  apt-get purge -y \
-  patchelf \
-  ;
+# =============================================================================
+# مرحله ۲: نصب وابستگی‌های Ruby (Bundler) با میرور ArvanCloud
+# =============================================================================
+FROM base AS ruby-deps
 
-# Build stage for media libraries (libvips, ffmpeg)
-FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS media-build
+COPY Gemfile Gemfile.lock ./
 
-ARG TARGETPLATFORM
+# تنظیم bundler برای استفاده از آینه ArvanCloud
+RUN bundle config mirror.https://rubygems.org https://mirror.arvancloud.com/rubygems && \
+    bundle config set --local deployment 'true' && \
+    bundle config set --local without 'development test' && \
+    bundle config set silence_root_warning 'true' && \
+    bundle install -j"$(nproc)"
 
-# Set default shell used for running commands
-SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
+# =============================================================================
+# مرحله ۳: نصب وابستگی‌های Node.js (Yarn) با میرور ArvanCloud
+# =============================================================================
+FROM node AS node-deps
 
-# hadolint ignore=DL3008
-RUN \
-  --mount=type=cache,id=apt-native-cache-${TARGETPLATFORM},target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,id=apt-native-lib-${TARGETPLATFORM},target=/var/lib/apt,sharing=locked \
-  # Remove automatic apt cache Docker cleanup scripts
-  rm -f /etc/apt/apt.conf.d/docker-clean; \
-  # Install build tools for native libraries
-  apt-get update; \
-  apt-get install -y --no-install-recommends \
-  autoconf \
-  automake \
-  build-essential \
-  libtool \
-  meson \
-  nasm \
-  pkg-config \
-  xz-utils \
-  # libvips components
-  libcgif-dev \
-  libexif-dev \
-  libexpat1-dev \
-  libgirepository1.0-dev \
-  libglib2.0-dev \
-  libheif-dev \
-  libhwy-dev \
-  libimagequant-dev \
-  libjpeg62-turbo-dev \
-  liblcms2-dev \
-  libspng-dev \
-  libtiff-dev \
-  libwebp-dev \
-  # ffmpeg components
-  libdav1d-dev \
-  liblzma-dev \
-  libmp3lame-dev \
-  libopus-dev \
-  libsnappy-dev \
-  libvorbis-dev \
-  libvpx-dev \
-  libx264-dev \
-  libx265-dev \
-  ;
+WORKDIR /opt/mastodon
 
-# Create temporary libvips specific build layer
-FROM media-build AS libvips
+COPY package.json yarn.lock ./
 
-# libvips version to compile, change with [--build-arg VIPS_VERSION="8.15.2"]
-# renovate: datasource=github-releases depName=libvips packageName=libvips/libvips
-ARG VIPS_VERSION=8.18.4
-# libvips download URL, change with [--build-arg VIPS_URL="https://github.com/libvips/libvips/releases/download"]
-ARG VIPS_URL=https://github.com/libvips/libvips/releases/download
+# تنظیم yarn برای استفاده از آینه ArvanCloud
+RUN yarn config set registry https://mirror.arvancloud.com/npm/ && \
+    yarn install --pure-lockfile --non-interactive --production
 
-WORKDIR /usr/local/libvips/src
-# Download and extract libvips source code
-ADD ${VIPS_URL}/v${VIPS_VERSION}/vips-${VIPS_VERSION}.tar.xz /usr/local/libvips/src/
-RUN tar xf vips-${VIPS_VERSION}.tar.xz;
+# =============================================================================
+# مرحله ۴: پیش‌کامپایل دارایی‌ها (Assets)
+# =============================================================================
+FROM base AS assets
 
-WORKDIR /usr/local/libvips/src/vips-${VIPS_VERSION}
-
-# Configure libvips
-RUN meson setup build --prefix /usr/local/libvips --libdir=lib -Ddeprecated=false -Dintrospection=disabled -Dmodules=disabled -Dexamples=false
-
-WORKDIR /usr/local/libvips/src/vips-${VIPS_VERSION}/build
-
-# Compile and install libvips
-RUN ninja && ninja install
-
-# Create temporary ffmpeg specific build layer
-FROM media-build AS ffmpeg
-
-# ffmpeg version to compile, change with [--build-arg FFMPEG_VERSION="7.0.x"]
-# renovate: datasource=github-tags depName=FFmpeg/FFmpeg extractVersion=^n(?<version>\d+\.\d+(\.\d+)?)$
-ARG FFMPEG_VERSION=8.1.2
-# ffmpeg download URL, change with [--build-arg FFMPEG_URL="https://ffmpeg.org/releases"]
-ARG FFMPEG_URL=https://github.com/FFmpeg/FFmpeg/archive/refs/tags
-
-WORKDIR /usr/local/ffmpeg/src
-# Download and extract ffmpeg source code
-ADD ${FFMPEG_URL}/n${FFMPEG_VERSION}.tar.gz /usr/local/ffmpeg/src/
-RUN tar xf n${FFMPEG_VERSION}.tar.gz && mv FFmpeg-n${FFMPEG_VERSION} ffmpeg-${FFMPEG_VERSION};
-
-WORKDIR /usr/local/ffmpeg/src/ffmpeg-${FFMPEG_VERSION}
-
-# Configure and compile ffmpeg
-RUN \
-  ./configure \
-  --prefix=/usr/local/ffmpeg \
-  --toolchain=hardened \
-  --disable-debug \
-  --disable-devices \
-  --disable-doc \
-  --disable-ffplay \
-  --disable-network \
-  --disable-static \
-  --enable-ffmpeg \
-  --enable-ffprobe \
-  --enable-gpl \
-  --enable-libdav1d \
-  --enable-libmp3lame \
-  --enable-libopus \
-  --enable-libsnappy \
-  --enable-libvorbis \
-  --enable-libvpx \
-  --enable-libwebp \
-  --enable-libx264 \
-  --enable-libx265 \
-  --enable-shared \
-  --enable-version3 \
-  ; \
-  make -j"$(nproc)"; \
-  make install;
-
-# Create temporary build layer from base image for Ruby dependencies
-FROM ruby AS ruby-build
-
-ARG TARGETPLATFORM
-
-# hadolint ignore=DL3008
-RUN \
-  # Mount Apt cache and lib directories from Docker buildx caches
-  --mount=type=cache,id=apt-cache-${TARGETPLATFORM},target=/var/cache/apt,sharing=locked \
-  --mount=type=cache,id=apt-lib-${TARGETPLATFORM},target=/var/lib/apt,sharing=locked \
-  # Install build tools and bundler dependencies from APT
-  apt-get install -y --no-install-recommends \
-  build-essential \
-  git \
-  libgdbm-dev \
-  libgmp-dev \
-  libicu-dev \
-  libidn-dev \
-  libpq-dev \
-  libssl-dev \
-  libyaml-dev \
-  shared-mime-info \
-  zlib1g-dev \
-  ;
-
-# Create temporary bundler specific build layer from build layer
-FROM ruby-build AS bundler
-
-ARG TARGETPLATFORM
-
-# Copy Gemfile config into working directory
-COPY Gemfile* /opt/mastodon/
-
-# Copy libvips for gems that need it during install
-COPY --from=libvips /usr/local/libvips/lib /usr/local/lib
-COPY --from=libvips /usr/local/libvips/include /usr/local/include
-
-RUN ldconfig
-
-RUN \
-  # Mount Ruby Gem caches
-  --mount=type=cache,id=gem-cache-${TARGETPLATFORM},target=/usr/local/bundle/cache/,sharing=locked \
-  # Configure bundle to prevent changes to Gemfile and Gemfile.lock
-  bundle config set --global frozen "true"; \
-  # Configure bundle to not cache downloaded Gems
-  bundle config set --global cache_all "false"; \
-  # Configure bundle to only process production Gems
-  bundle config set --local without "development test"; \
-  # Configure bundle to not warn about root user
-  bundle config set silence_root_warning "true"; \
-  # Download and install required Gems
-  bundle install -j"$(nproc)";
-
-# Create temporary assets build layer from build layer
-FROM ruby-build AS precompiler
-
-ARG TARGETPLATFORM
-
-# Copy Mastodon sources into layer
+# کپی کل کد پروژه
 COPY . /opt/mastodon/
 
-# Copy Node.js binaries/libraries into layer
-COPY --from=node /usr/local/bin /usr/local/bin
-COPY --from=node /usr/local/lib /usr/local/lib
+# کپی وابستگی‌های نصب‌شده از مراحل قبل
+COPY --from=ruby-deps /usr/local/bundle /usr/local/bundle
+COPY --from=node-deps /opt/mastodon/node_modules /opt/mastodon/node_modules
 
-RUN \
-  # Mount local Corepack and Yarn caches from Docker buildx caches
-  --mount=type=cache,id=corepack-cache-${TARGETPLATFORM},target=/usr/local/share/.cache/corepack,sharing=locked \
-  --mount=type=cache,id=yarn-cache-${TARGETPLATFORM},target=/usr/local/share/.cache/yarn,sharing=locked \
-  # Remove pre-installed Yarn binaries (only present on Node <26)
-  rm -f /usr/local/bin/yarn*; \
-  # Install Corepack
-  npm i -g corepack;
+# متغیرهای موقت برای کامپایل
+ENV SECRET_KEY_BASE=precompile_placeholder \
+    OTP_SECRET=precompile_placeholder
 
-# hadolint ignore=DL3008
-RUN \
-  --mount=type=cache,id=corepack-cache-${TARGETPLATFORM},target=/usr/local/share/.cache/corepack,sharing=locked \
-  --mount=type=cache,id=yarn-cache-${TARGETPLATFORM},target=/usr/local/share/.cache/yarn,sharing=locked \
-  # Install Node.js packages
-  yarn workspaces focus --production @mastodon/mastodon;
+# پیش‌کامپایل فایل‌های استاتیک
+RUN bundle exec rails assets:precompile && \
+    rm -fr /opt/mastodon/tmp
 
-# Copy libvips components into layer for precompiler
-COPY --from=libvips /usr/local/libvips/bin /usr/local/bin
-COPY --from=libvips /usr/local/libvips/lib /usr/local/lib
-# Copy bundler packages into layer for precompiler
-COPY --from=bundler /opt/mastodon /opt/mastodon/
-COPY --from=bundler /usr/local/bundle/ /usr/local/bundle/
+# =============================================================================
+# مرحله ۵: تصویر نهایی (Production)
+# =============================================================================
+FROM base AS production
 
-RUN \
-  ldconfig; \
-  # Use Ruby on Rails to create Mastodon assets
-  SECRET_KEY_BASE_DUMMY=1 \
-  bundle exec rails assets:precompile; \
-  # Cleanup temporary files
-  rm -fr /opt/mastodon/tmp;
-
-# Prep final Mastodon Ruby layer
-FROM ruby AS mastodon
-
-ARG TARGETPLATFORM
-
-# Copy Mastodon sources into final layer
+# کپی کل کد (بدون پوشه‌های غیرضروری)
 COPY . /opt/mastodon/
 
-# Copy compiled assets to layer
-COPY --from=precompiler /opt/mastodon/public/packs /opt/mastodon/public/packs
-COPY --from=precompiler /opt/mastodon/public/assets /opt/mastodon/public/assets
-# Copy bundler components to layer
-COPY --from=bundler /usr/local/bundle/ /usr/local/bundle/
-# Copy libvips components to layer
-COPY --from=libvips /usr/local/libvips/bin /usr/local/bin
-COPY --from=libvips /usr/local/libvips/lib /usr/local/lib
-# Copy ffpmeg components to layer
-COPY --from=ffmpeg /usr/local/ffmpeg/bin /usr/local/bin
-COPY --from=ffmpeg /usr/local/ffmpeg/lib /usr/local/lib
+# کپی وابستگی‌ها و دارایی‌های کامپایل‌شده
+COPY --from=ruby-deps /usr/local/bundle /usr/local/bundle
+COPY --from=node-deps /opt/mastodon/node_modules /opt/mastodon/node_modules
+COPY --from=assets /opt/mastodon/public/packs /opt/mastodon/public/packs
+COPY --from=assets /opt/mastodon/public/assets /opt/mastodon/public/assets
 
-RUN \
-  ldconfig; \
-  # Smoketest media processors
-  vips -v; \
-  ffmpeg -version; \
-  ffprobe -version;
+# تنظیم مالکیت پوشه‌های موقت
+RUN mkdir -p /opt/mastodon/public/system && \
+    chown -R mastodon:mastodon /opt/mastodon/tmp /opt/mastodon/public/system
 
-RUN \
-  # Precompile bootsnap code for faster Rails startup
-  bundle exec bootsnap precompile --gemfile app/ lib/;
-
-RUN \
-  # Pre-create and chown system volume to Mastodon user
-  mkdir -p /opt/mastodon/public/system; \
-  chown mastodon:mastodon /opt/mastodon/public/system; \
-  # Set Mastodon user as owner of tmp folder
-  chown -R mastodon:mastodon /opt/mastodon/tmp;
-
-# Set the running user for resulting container
+# کاربر نهایی
 USER mastodon
-# Expose default Puma ports
+
 EXPOSE 3000
-# Set container tini as default entry point
 ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
