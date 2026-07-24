@@ -1,22 +1,25 @@
 # syntax=docker/dockerfile:1.18
 
 # =============================================================================
-# تنظیمات پایه با قابلیت تغییر رجیستری (برای دور زدن تحریم)
+# پارامترهای ورودی (که از docker-compose.yml می‌آیند)
 # =============================================================================
 ARG BASE_REGISTRY="docker.io"
+ARG DEBIAN_MIRROR="deb.debian.org/debian"   # پیش‌فرض رسمی (سریع‌تر از آروان)
+ARG RUBYGEMS_MIRROR="https://rubygems.org"
+ARG NPM_MIRROR="https://registry.npmjs.org/"
+
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
 
 ARG RUBY_VERSION="3.2.2"
 ARG NODE_MAJOR_VERSION="20"
-ARG DEBIAN_VERSION="bullseye"   # استفاده از Debian 11 (پایدار)
+ARG DEBIAN_VERSION="bullseye"
 
-# تصاویر پایه از رجیستری قابل تنظیم
 FROM ${BASE_REGISTRY}/node:${NODE_MAJOR_VERSION}-${DEBIAN_VERSION}-slim AS node
 FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS ruby
 
 # =============================================================================
-# متغیرهای ساخت (قابل تنظیم با --build-arg)
+# متغیرهای ساخت
 # =============================================================================
 ARG MASTODON_VERSION_PRERELEASE=""
 ARG MASTODON_VERSION_METADATA=""
@@ -46,56 +49,29 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: تنظیم مخازن Apt به میرور ArvanCloud
+# مرحله ۱: پایه (تنظیم مخازن با آینه انتخابی)
 # =============================================================================
 FROM ruby AS base
 
-ARG TARGETPLATFORM
+ARG DEBIAN_MIRROR
 ARG DEBIAN_VERSION
 
-# حذف فایل‌های پاک‌کننده کش
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
+RUN echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
 
-# تنظیم مخازن Debian برای استفاده از آینه ArvanCloud
-RUN echo "deb http://mirror.arvancloud.com/debian/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
-    echo "deb http://mirror.arvancloud.com/debian/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
-    echo "deb http://mirror.arvancloud.com/debian-security/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
-
-# نصب وابستگی‌های اصلی سیستم
 RUN apt-get update -qq && \
     apt-get dist-upgrade -yq && \
     apt-get install -y --no-install-recommends \
-        curl \
-        file \
-        git \
-        libjemalloc2 \
-        procps \
-        tini \
-        tzdata \
-        wget \
-        # وابستگی‌های Ruby و Mastodon
-        libexpat1 \
-        libglib2.0-0 \
-        libicu67 \
-        libidn11 \
-        libpq5 \
-        libreadline8 \
-        libssl1.1 \
-        libyaml-0-2 \
-        # libvips (از مخازن Debian)
-        libvips42 \
-        # ffmpeg (از مخازن Debian)
-        ffmpeg \
-        # ابزارهای کمکی
-        imagemagick \
-        postgresql-client \
-        redis-tools \
+        curl file git libjemalloc2 procps tini tzdata wget \
+        libexpat1 libglib2.0-0 libicu67 libidn11 libpq5 \
+        libreadline8 libssl1.1 libyaml-0-2 libvips42 ffmpeg \
+        imagemagick postgresql-client redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# پچ کردن Ruby برای استفاده از jemalloc
 RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby || true
 
-# ایجاد کاربر mastodon
 RUN groupadd -g "${GID}" mastodon && \
     useradd -l -u "${UID}" -g "${GID}" -m -d /opt/mastodon mastodon && \
     ln -s /opt/mastodon /mastodon
@@ -103,73 +79,58 @@ RUN groupadd -g "${GID}" mastodon && \
 WORKDIR /opt/mastodon
 
 # =============================================================================
-# مرحله ۲: نصب وابستگی‌های Ruby (Bundler) با میرور ArvanCloud
+# مرحله ۲: وابستگی‌های Ruby
 # =============================================================================
 FROM base AS ruby-deps
 
+ARG RUBYGEMS_MIRROR
 COPY Gemfile Gemfile.lock ./
 
-# تنظیم bundler برای استفاده از آینه ArvanCloud
-RUN bundle config mirror.https://rubygems.org https://mirror.arvancloud.com/rubygems && \
+RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle config set --local deployment 'true' && \
     bundle config set --local without 'development test' && \
     bundle config set silence_root_warning 'true' && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: نصب وابستگی‌های Node.js (Yarn) با میرور ArvanCloud
+# مرحله ۳: وابستگی‌های Node.js
 # =============================================================================
 FROM node AS node-deps
 
+ARG NPM_MIRROR
 WORKDIR /opt/mastodon
-
 COPY package.json yarn.lock ./
 
-# تنظیم yarn برای استفاده از آینه ArvanCloud
-RUN yarn config set registry https://mirror.arvancloud.com/npm/ && \
+RUN yarn config set registry ${NPM_MIRROR} && \
     yarn install --pure-lockfile --non-interactive --production
 
 # =============================================================================
-# مرحله ۴: پیش‌کامپایل دارایی‌ها (Assets)
+# مرحله ۴: کامپایل Assets
 # =============================================================================
 FROM base AS assets
 
-# کپی کل کد پروژه
 COPY . /opt/mastodon/
-
-# کپی وابستگی‌های نصب‌شده از مراحل قبل
 COPY --from=ruby-deps /usr/local/bundle /usr/local/bundle
 COPY --from=node-deps /opt/mastodon/node_modules /opt/mastodon/node_modules
 
-# متغیرهای موقت برای کامپایل
-ENV SECRET_KEY_BASE=precompile_placeholder \
-    OTP_SECRET=precompile_placeholder
-
-# پیش‌کامپایل فایل‌های استاتیک
-RUN bundle exec rails assets:precompile && \
-    rm -fr /opt/mastodon/tmp
+ENV SECRET_KEY_BASE=precompile_placeholder OTP_SECRET=precompile_placeholder
+RUN bundle exec rails assets:precompile && rm -fr /opt/mastodon/tmp
 
 # =============================================================================
-# مرحله ۵: تصویر نهایی (Production)
+# مرحله ۵: تصویر نهایی اجرا
 # =============================================================================
 FROM base AS production
 
-# کپی کل کد (بدون پوشه‌های غیرضروری)
 COPY . /opt/mastodon/
-
-# کپی وابستگی‌ها و دارایی‌های کامپایل‌شده
 COPY --from=ruby-deps /usr/local/bundle /usr/local/bundle
 COPY --from=node-deps /opt/mastodon/node_modules /opt/mastodon/node_modules
 COPY --from=assets /opt/mastodon/public/packs /opt/mastodon/public/packs
 COPY --from=assets /opt/mastodon/public/assets /opt/mastodon/public/assets
 
-# تنظیم مالکیت پوشه‌های موقت
 RUN mkdir -p /opt/mastodon/public/system && \
     chown -R mastodon:mastodon /opt/mastodon/tmp /opt/mastodon/public/system
 
-# کاربر نهایی
 USER mastodon
-
 EXPOSE 3000
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

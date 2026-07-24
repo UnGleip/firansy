@@ -28,6 +28,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # ★ اینجا رو عوض کن تا آینه‌ات عوض بشه ★
+        DEBIAN_MIRROR: "deb.debian.org/debian"          # برای سیستم عامل
+        RUBYGEMS_MIRROR: "https://rubygems.org"        # برای Gem های Ruby
+        NPM_MIRROR: "https://registry.npmjs.org/"      # برای پکیج‌های Node.js
+        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: bundle exec puma -C config/puma.rb
@@ -48,6 +54,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        DEBIAN_MIRROR: "deb.debian.org/debian"
+        RUBYGEMS_MIRROR: "https://rubygems.org"
+        NPM_MIRROR: "https://registry.npmjs.org/"
+        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: bundle exec sidekiq
@@ -66,6 +77,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        DEBIAN_MIRROR: "deb.debian.org/debian"
+        RUBYGEMS_MIRROR: "https://rubygems.org"
+        NPM_MIRROR: "https://registry.npmjs.org/"
+        BASE_REGISTRY: "docker.io"
     restart: always
     env_file: .env.production
     command: node ./streaming/index.js
