@@ -29,11 +29,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # رجیستری اصلی (پیش‌فرض devneeds) – در صورت نیاز به پشتیبان، مقدار را به docker-mirror.liara.ir تغییر دهید
         BASE_REGISTRY: "docker.devneeds.ir"
-        # آینه‌های لیارا برای Debian و npm
         DEBIAN_MIRROR: "linux-mirror.liara.ir/repository/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"   # در صورت نیاز به آینه لیارا: https://mirror.liara.ir/repository/rubygems
+        RUBYGEMS_MIRROR: "https://rubygems.org"
         NPM_MIRROR: "https://mirror.liara.ir/repository/npm/"
     restart: always
     env_file: .env.production
