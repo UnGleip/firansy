@@ -1,10 +1,11 @@
 # =============================================================================
-# پارامترهای ورودی با پیش‌فرض آینه داخلی
+# پارامترهای ورودی با قابلیت انتخاب رجیستری (پیش‌فرض: devneeds)
+# در صورت نیاز به رجیستری پشتیبان، مقدار BASE_REGISTRY را به docker-mirror.liara.ir تغییر دهید
 # =============================================================================
 ARG BASE_REGISTRY="docker.devneeds.ir"
-ARG DEBIAN_MIRROR="deb.debian.org/debian"
-ARG RUBYGEMS_MIRROR="https://rubygems.org"
-ARG NPM_MIRROR="https://registry.npmjs.org/"
+ARG DEBIAN_MIRROR="linux-mirror.liara.ir/repository/debian"   # آینه Debian از لیارا
+ARG RUBYGEMS_MIRROR="https://rubygems.org"                    # در صورت نیاز به آینه داخلی، میتوانید از mirror.liara.ir استفاده کنید
+ARG NPM_MIRROR="https://mirror.liara.ir/repository/npm/"      # آینه npm از لیارا
 
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
@@ -13,6 +14,9 @@ ARG RUBY_VERSION="3.2.2"
 ARG NODE_MAJOR_VERSION="20"
 ARG DEBIAN_VERSION="bullseye"
 
+# =============================================================================
+# تصاویر پایه از رجیستری مشخص شده
+# =============================================================================
 FROM ${BASE_REGISTRY}/node:${NODE_MAJOR_VERSION}-${DEBIAN_VERSION}-slim AS node
 FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS ruby
 
@@ -47,7 +51,7 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: پایه (تنظیم مخازن با آینه انتخابی)
+# مرحله ۱: پایه (تنظیم مخازن Debian با آینه انتخابی)
 # =============================================================================
 FROM ruby AS base
 
@@ -77,7 +81,7 @@ RUN groupadd -g "${GID}" mastodon && \
 WORKDIR /opt/mastodon
 
 # =============================================================================
-# مرحله ۲: وابستگی‌های Ruby
+# مرحله ۲: وابستگی‌های Ruby (Gems) با آینه قابل تنظیم
 # =============================================================================
 FROM base AS ruby-deps
 
@@ -91,29 +95,22 @@ RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js (اصلاح شده برای Yarn 4)
+# مرحله ۳: وابستگی‌های Node.js (با Corepack و Yarn 4)
 # =============================================================================
 FROM node AS node-deps
 
 ARG NPM_MIRROR
 WORKDIR /opt/mastodon
-
-# کپی فایل‌های مدیریت بسته‌ها و تنظیمات Yarn
 COPY package.json yarn.lock ./
-COPY .yarnrc.yml ./ 2>/dev/null || true
-COPY .yarn ./.yarn 2>/dev/null || true
 
-# نصب ابزارهای ساخت برای پکیج‌های Native
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git && rm -rf /var/lib/apt/lists/*
-
-# فعال‌سازی Corepack، تنظیم رجیستری و نصب وابستگی‌ها بدون پرچم‌های منسوخ‌شده
+# فعال‌سازی corepack، نصب Yarn 4 و تنظیم رجیستری npm به آینه لیارا
 RUN corepack enable && \
     corepack prepare yarn@4.17.1 --activate && \
-    yarn config set npmRegistryServer "${NPM_MIRROR}" && \
-    yarn install --immutable
+    yarn config set npmRegistryServer ${NPM_MIRROR} && \
+    yarn install --immutable --non-interactive --production
 
 # =============================================================================
-# مرحله ۴: کامپایل Assets
+# مرحله ۴: پیش‌کامپایل Assets (CSS, JS, etc.)
 # =============================================================================
 FROM base AS assets
 
@@ -125,7 +122,7 @@ ENV SECRET_KEY_BASE=precompile_placeholder OTP_SECRET=precompile_placeholder
 RUN bundle exec rails assets:precompile && rm -fr /opt/mastodon/tmp
 
 # =============================================================================
-# مرحله ۵: تصویر نهایی اجرا
+# مرحله ۵: تصویر نهایی برای اجرا (Production)
 # =============================================================================
 FROM base AS production
 
@@ -140,6 +137,7 @@ RUN mkdir -p /opt/mastodon/public/system && \
 
 USER mastodon
 
+# پورت ۳۱۰۰ برای وب سرویس (جلوگیری از تداخل با سایر سرویس‌های Dokploy)
 EXPOSE 3100
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
