@@ -91,19 +91,26 @@ RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js (با Corepack و Yarn 4)
+# مرحله ۳: وابستگی‌های Node.js (اصلاح شده برای Yarn 4)
 # =============================================================================
 FROM node AS node-deps
 
 ARG NPM_MIRROR
 WORKDIR /opt/mastodon
-COPY package.json yarn.lock ./
 
-# فعال‌سازی corepack، نصب Yarn 4 و تنظیم رجیستری با دستور جدید
+# کپی فایل‌های مدیریت بسته‌ها و تنظیمات Yarn
+COPY package.json yarn.lock ./
+COPY .yarnrc.yml ./ 2>/dev/null || true
+COPY .yarn ./.yarn 2>/dev/null || true
+
+# نصب ابزارهای ساخت برای پکیج‌های Native
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git && rm -rf /var/lib/apt/lists/*
+
+# فعال‌سازی Corepack، تنظیم رجیستری و نصب وابستگی‌ها بدون پرچم‌های منسوخ‌شده
 RUN corepack enable && \
     corepack prepare yarn@4.17.1 --activate && \
-    yarn config set npmRegistryServer ${NPM_MIRROR} && \
-    yarn install --immutable --non-interactive --production
+    yarn config set npmRegistryServer "${NPM_MIRROR}" && \
+    yarn install --immutable
 
 # =============================================================================
 # مرحله ۴: کامپایل Assets
