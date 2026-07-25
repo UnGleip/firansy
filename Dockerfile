@@ -1,8 +1,8 @@
 # =============================================================================
-# پارامترهای ورودی با پشتیبانی از آینه‌های داخلی (Devneeds و Liara)
+# پارامترهای ورودی
 # =============================================================================
 ARG BASE_REGISTRY="docker.devneeds.ir"
-ARG DEBIAN_MIRROR="linux-mirror.liara.ir/repository/debian"
+ARG DEBIAN_MIRROR="mirror.iranserver.com/debian"
 ARG RUBYGEMS_MIRROR="https://rubygems.org"
 ARG NPM_MIRROR="https://mirror.liara.ir/repository/npm/"
 
@@ -50,7 +50,7 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: پایه
+# مرحله ۱: پایه (تنظیم مخازن دبیان)
 # =============================================================================
 FROM ruby AS base
 
@@ -60,7 +60,7 @@ ARG DEBIAN_VERSION
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 RUN echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
     echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
-    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
+    echo "deb http://security.debian.org/debian-security ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
 
 RUN apt-get update -qq && \
     apt-get dist-upgrade -yq && \
@@ -95,20 +95,25 @@ RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js با Yarn 4 (بدون --immutable)
+# مرحله ۳: وابستگی‌های Node.js (اصلاح کامل COPY و Yarn 4)
 # =============================================================================
 FROM node AS node-deps
 
 ARG NPM_MIRROR
 WORKDIR /opt/mastodon
+
+# کپی فایل‌های اصلی وابستگی
 COPY package.json yarn.lock ./
 
-# فعال‌سازی corepack، نصب Yarn 4 و تنظیم رجیستری
-# از --immutable استفاده نمی‌کنیم تا اجازه به‌روزرسانی yarn.lock داده شود
+# کپی اختیاری کانفیگ‌های Yarn بدون خطا در صورت عدم وجود
+COPY .yarnrc.ym[l] ./
+COPY .yar[n] ./.yarn/
+
+# فعال‌سازی corepack، تنظیم رجیستری و نصب وابستگی‌ها
 RUN corepack enable && \
     corepack prepare yarn@4.17.1 --activate && \
-    yarn config set npmRegistryServer ${NPM_MIRROR} && \
-    yarn install --ignore-scripts && \
+    yarn config set npmRegistryServer "${NPM_MIRROR}" && \
+    yarn install --mode=skip-build && \
     yarn workspaces focus --production && \
     yarn cache clean
 
@@ -125,7 +130,7 @@ ENV SECRET_KEY_BASE=precompile_placeholder OTP_SECRET=precompile_placeholder
 RUN bundle exec rails assets:precompile && rm -fr /opt/mastodon/tmp
 
 # =============================================================================
-# مرحله ۵: تصویر نهایی
+# مرحله ۵: تصویر نهایی اجرا
 # =============================================================================
 FROM base AS production
 
