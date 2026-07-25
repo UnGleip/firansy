@@ -67,7 +67,7 @@ RUN apt update -qq && \
         libexpat1 libglib2.0-0 libicu72 libidn12 libpq5 \
         libreadline8 libssl3 libyaml-0-2 libvips42 ffmpeg \
         imagemagick postgresql-client redis-tools \
-        build-essential python3 patchelf libidn-dev \
+        build-essential python3 patchelf libidn-dev libicu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby
