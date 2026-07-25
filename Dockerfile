@@ -1,20 +1,19 @@
 # =============================================================================
-# پارامترهای ورودی با پشتیبانی از آینه‌های داخلی (Devneeds و Liara)
+# پارامترهای ورودی با پشتیبانی از آینه‌های داخلی (فقط برای Docker Registry)
 # =============================================================================
 ARG BASE_REGISTRY="docker.devneeds.ir"
-ARG DEBIAN_MIRROR="linux-mirror.liara.ir/repository/debian"
 ARG RUBYGEMS_MIRROR="https://rubygems.org"
 ARG NPM_MIRROR="https://mirror.liara.ir/repository/npm/"
 
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
 
-ARG RUBY_VERSION="3.3.0"               # ← تغییر به 3.3.0 (نیاز پروژه)
+ARG RUBY_VERSION="3.3.0"
 ARG NODE_MAJOR_VERSION="20"
-ARG DEBIAN_VERSION="bookworm"          # ← تغییر به bookworm (جدیدتر)
+ARG DEBIAN_VERSION="bookworm"
 
 # =============================================================================
-# تصاویر پایه
+# تصاویر پایه (از رجیستری داخلی برای داکر)
 # =============================================================================
 FROM ${BASE_REGISTRY}/node:${NODE_MAJOR_VERSION}-${DEBIAN_VERSION}-slim AS node
 FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS ruby
@@ -50,29 +49,27 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: پایه
+# مرحله ۱: پایه (استفاده از مخازن اصلی Debian، نه آینه)
 # =============================================================================
 FROM ruby AS base
 
-ARG DEBIAN_MIRROR
 ARG DEBIAN_VERSION
 
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
-RUN echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
-    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
-    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
+RUN echo "deb http://deb.debian.org/debian/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian-security/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
 
-RUN apt-get update -qq && \
-    apt-get dist-upgrade -yq && \
-    apt-get install -y --no-install-recommends \
+RUN apt update -qq && \
+    apt dist-upgrade -yq && \
+    apt install -y --no-install-recommends \
         curl file git libjemalloc2 procps tini tzdata wget \
-        libexpat1 libglib2.0-0 libicu72 libidn11 libpq5 \
+        libexpat1 libglib2.0-0 libicu72 libidn12 libpq5 \
         libreadline8 libssl3 libyaml-0-2 libvips42 ffmpeg \
         imagemagick postgresql-client redis-tools \
         build-essential python3 patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-# استفاده از jemalloc
 RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby
 
 RUN groupadd -g "${GID}" mastodon && \
@@ -82,7 +79,7 @@ RUN groupadd -g "${GID}" mastodon && \
 WORKDIR /opt/mastodon
 
 # =============================================================================
-# مرحله ۲: وابستگی‌های Ruby
+# مرحله ۲: وابستگی‌های Ruby (Gems)
 # =============================================================================
 FROM base AS ruby-deps
 
