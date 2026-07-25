@@ -1,17 +1,17 @@
 # =============================================================================
-# پارامترهای ورودی
+# پارامترهای ورودی با پشتیبانی از آینه‌های داخلی (Devneeds و Liara)
 # =============================================================================
 ARG BASE_REGISTRY="docker.devneeds.ir"
-ARG DEBIAN_MIRROR="mirror.iranserver.com/debian"
+ARG DEBIAN_MIRROR="linux-mirror.liara.ir/repository/debian"
 ARG RUBYGEMS_MIRROR="https://rubygems.org"
 ARG NPM_MIRROR="https://mirror.liara.ir/repository/npm/"
 
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
 
-ARG RUBY_VERSION="3.2.2"
+ARG RUBY_VERSION="3.3.0"               # ← تغییر به 3.3.0 (نیاز پروژه)
 ARG NODE_MAJOR_VERSION="20"
-ARG DEBIAN_VERSION="bullseye"
+ARG DEBIAN_VERSION="bookworm"          # ← تغییر به bookworm (جدیدتر)
 
 # =============================================================================
 # تصاویر پایه
@@ -50,7 +50,7 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: پایه (تنظیم مخازن دبیان)
+# مرحله ۱: پایه
 # =============================================================================
 FROM ruby AS base
 
@@ -60,19 +60,20 @@ ARG DEBIAN_VERSION
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 RUN echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION} main contrib non-free" > /etc/apt/sources.list && \
     echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-updates main contrib non-free" >> /etc/apt/sources.list && \
-    echo "deb http://security.debian.org/debian-security ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
+    echo "deb http://${DEBIAN_MIRROR}/ ${DEBIAN_VERSION}-security main contrib non-free" >> /etc/apt/sources.list
 
 RUN apt-get update -qq && \
     apt-get dist-upgrade -yq && \
     apt-get install -y --no-install-recommends \
         curl file git libjemalloc2 procps tini tzdata wget \
-        libexpat1 libglib2.0-0 libicu67 libidn11 libpq5 \
-        libreadline8 libssl1.1 libyaml-0-2 libvips42 ffmpeg \
+        libexpat1 libglib2.0-0 libicu72 libidn11 libpq5 \
+        libreadline8 libssl3 libyaml-0-2 libvips42 ffmpeg \
         imagemagick postgresql-client redis-tools \
-        build-essential python3 \
+        build-essential python3 patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby || true
+# استفاده از jemalloc
+RUN patchelf --add-needed libjemalloc.so.2 /usr/local/bin/ruby
 
 RUN groupadd -g "${GID}" mastodon && \
     useradd -l -u "${UID}" -g "${GID}" -m -d /opt/mastodon mastodon && \
@@ -95,24 +96,17 @@ RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js (اصلاح کامل COPY و Yarn 4)
+# مرحله ۳: وابستگی‌های Node.js با Yarn 4
 # =============================================================================
 FROM node AS node-deps
 
 ARG NPM_MIRROR
 WORKDIR /opt/mastodon
-
-# کپی فایل‌های اصلی وابستگی
 COPY package.json yarn.lock ./
 
-# کپی اختیاری کانفیگ‌های Yarn بدون خطا در صورت عدم وجود
-COPY .yarnrc.ym[l] ./
-COPY .yar[n] ./.yarn/
-
-# فعال‌سازی corepack، تنظیم رجیستری و نصب وابستگی‌ها
 RUN corepack enable && \
     corepack prepare yarn@4.17.1 --activate && \
-    yarn config set npmRegistryServer "${NPM_MIRROR}" && \
+    yarn config set npmRegistryServer ${NPM_MIRROR} && \
     yarn install --mode=skip-build && \
     yarn workspaces focus --production && \
     yarn cache clean
@@ -130,7 +124,7 @@ ENV SECRET_KEY_BASE=precompile_placeholder OTP_SECRET=precompile_placeholder
 RUN bundle exec rails assets:precompile && rm -fr /opt/mastodon/tmp
 
 # =============================================================================
-# مرحله ۵: تصویر نهایی اجرا
+# مرحله ۵: تصویر نهایی
 # =============================================================================
 FROM base AS production
 
