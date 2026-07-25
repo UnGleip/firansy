@@ -95,7 +95,7 @@ RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
     bundle install -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js با Yarn 4
+# مرحله ۳: وابستگی‌های Node.js با Yarn 4 (بدون --immutable)
 # =============================================================================
 FROM node AS node-deps
 
@@ -104,14 +104,11 @@ WORKDIR /opt/mastodon
 COPY package.json yarn.lock ./
 
 # فعال‌سازی corepack، نصب Yarn 4 و تنظیم رجیستری
+# از --immutable استفاده نمی‌کنیم تا اجازه به‌روزرسانی yarn.lock داده شود
 RUN corepack enable && \
-    corepack prepare yarn@4.17.1 --activate
-
-# نصب وابستگی‌ها با استفاده از دستور صحیح Yarn 4
-# از --immutable برای قفل کردن فایل yarn.lock استفاده می‌شود
-# به جای --production از 'yarn workspaces focus --production' استفاده می‌شود
-RUN yarn config set npmRegistryServer ${NPM_MIRROR} && \
-    yarn install --immutable && \
+    corepack prepare yarn@4.17.1 --activate && \
+    yarn config set npmRegistryServer ${NPM_MIRROR} && \
+    yarn install --ignore-scripts && \
     yarn workspaces focus --production && \
     yarn cache clean
 
