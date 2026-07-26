@@ -2,8 +2,6 @@
 # پارامترهای ورودی با پشتیبانی از آینه‌های داخلی (فقط برای Docker Registry)
 # =============================================================================
 ARG BASE_REGISTRY="docker.devneeds.ir"
-ARG RUBYGEMS_MIRROR="https://rubygems.org"
-ARG NPM_MIRROR="https://mirror.liara.ir/repository/npm/"
 
 ARG TARGETPLATFORM=${TARGETPLATFORM}
 ARG BUILDPLATFORM=${BUILDPLATFORM}
@@ -13,7 +11,7 @@ ARG NODE_MAJOR_VERSION="20"
 ARG DEBIAN_VERSION="bookworm"
 
 # =============================================================================
-# تصاویر پایه (از رجیستری داخلی برای داکر)
+# تصاویر پایه (از رجیستری داخلی داکر)
 # =============================================================================
 FROM ${BASE_REGISTRY}/node:${NODE_MAJOR_VERSION}-${DEBIAN_VERSION}-slim AS node
 FROM ${BASE_REGISTRY}/ruby:${RUBY_VERSION}-slim-${DEBIAN_VERSION} AS ruby
@@ -49,7 +47,7 @@ ENV \
 SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-c"]
 
 # =============================================================================
-# مرحله ۱: پایه (استفاده از مخازن اصلی Debian، نه آینه)
+# مرحله ۱: پایه
 # =============================================================================
 FROM ruby AS base
 
@@ -79,34 +77,36 @@ RUN groupadd -g "${GID}" mastodon && \
 WORKDIR /opt/mastodon
 
 # =============================================================================
-# مرحله ۲: وابستگی‌های Ruby (Gems)
+# مرحله ۲: وابستگی‌های Ruby (نصب کاملاً آفلاین از vendor/cache)
 # =============================================================================
 FROM base AS ruby-deps
 
-ARG RUBYGEMS_MIRROR
 COPY Gemfile Gemfile.lock ./
+# کپی کردن Gemهای کش شده
+COPY vendor/cache ./vendor/cache
 
-RUN bundle config mirror.https://rubygems.org ${RUBYGEMS_MIRROR} && \
-    bundle config set --local deployment 'true' && \
+RUN bundle config set --local deployment 'true' && \
     bundle config set --local without 'development test' && \
     bundle config set silence_root_warning 'true' && \
-    bundle install -j"$(nproc)"
+    # استفاده از سوئئیچ local-- برای عدم اتصال به اینترنت
+    bundle install --local -j"$(nproc)"
 
 # =============================================================================
-# مرحله ۳: وابستگی‌های Node.js با Yarn 4
+# مرحله ۳: وابستگی‌های Node.js با Yarn 4 (نصب آفلاین)
 # =============================================================================
 FROM node AS node-deps
 
-ARG NPM_MIRROR
 WORKDIR /opt/mastodon
-COPY package.json yarn.lock ./
+
+# کپی تمامی فایل‌های کانفیگ و کش Yarn
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
 
 RUN corepack enable && \
     corepack prepare yarn@4.17.1 --activate && \
-    yarn config set npmRegistryServer ${NPM_MIRROR} && \
-    yarn install --mode=skip-build && \
-    yarn workspaces focus --production && \
-    yarn cache clean
+    # نصب پکیج‌ها به صورت آفلاین و بدون دانلود مجدد
+    yarn install --immutable --mode=skip-build && \
+    yarn workspaces focus --production
 
 # =============================================================================
 # مرحله ۴: پیش‌کامپایل Assets
