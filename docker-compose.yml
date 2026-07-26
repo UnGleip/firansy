@@ -30,9 +30,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_REGISTRY: "docker.devneeds.ir"
-        DEBIAN_MIRROR: "linux-mirror.liara.ir/repository/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"
-        NPM_MIRROR: "https://mirror.liara.ir/repository/npm/"
     restart: always
     env_file: .env.production
     command: bundle exec puma -C config/puma.rb
@@ -55,9 +52,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_REGISTRY: "docker.devneeds.ir"
-        DEBIAN_MIRROR: "linux-mirror.liara.ir/repository/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"
-        NPM_MIRROR: "https://mirror.liara.ir/repository/npm/"
     restart: always
     env_file: .env.production
     command: bundle exec sidekiq
@@ -78,9 +72,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_REGISTRY: "docker.devneeds.ir"
-        DEBIAN_MIRROR: "linux-mirror.liara.ir/repository/debian"
-        RUBYGEMS_MIRROR: "https://rubygems.org"
-        NPM_MIRROR: "https://mirror.liara.ir/repository/npm/"
     restart: always
     env_file: .env.production
     command: node ./streaming/index.js
