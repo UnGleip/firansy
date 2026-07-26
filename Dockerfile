@@ -38,11 +38,12 @@ WORKDIR /opt/mastodon
 # کپی فایل‌های کانفیگ Yarn
 COPY package.json yarn.lock .yarnrc.yml ./
 
-# اصلاح شده: اگر پوشه .yarn وجود نداشت، بدون خطا ادامه دهد
+# ساخت پوشه .yarn در صورت عدم وجود
 RUN mkdir -p .yarn
 COPY .yarn* ./.yarn/
 
-RUN corepack enable && yarn install --immutable
+# اصلاح شده: حذف --immutable برای جلوگیری از ارور عدم تطابق yarn.lock
+RUN corepack enable && yarn install --no-immutable
 
 # ------------------------------------------------------------------------------
 # 3. Ruby Gems Setup
@@ -53,7 +54,7 @@ WORKDIR /opt/mastodon
 
 COPY Gemfile Gemfile.lock ./
 
-# اصلاح شده: اگر پوشه vendor/cache وجود نداشت، بدون خطا ادامه دهد
+# ساخت پوشه vendor/cache در صورت عدم وجود
 RUN mkdir -p vendor/cache
 COPY vendor/cach[e] ./vendor/cache/
 
