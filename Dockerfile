@@ -42,7 +42,7 @@ COPY package.json yarn.lock .yarnrc.yml ./
 RUN mkdir -p .yarn
 COPY .yarn* ./.yarn/
 
-# اصلاح شده: حذف --immutable برای جلوگیری از ارور عدم تطابق yarn.lock
+# حذف --immutable برای جلوگیری از ارور عدم تطابق yarn.lock
 RUN corepack enable && yarn install --no-immutable
 
 # ------------------------------------------------------------------------------
@@ -75,10 +75,12 @@ COPY --from=ruby-deps /usr/local/bundle /usr/local/bundle
 
 ENV RAILS_ENV="production" \
     NODE_ENV="production" \
-    PORT=3000
+    PORT=3100 \
+    STREAMING_API_BASE_URL="http://localhost:4000"
 
 USER mastodon
 
-EXPOSE 3000
+# اکسپوز پورت‌های وب (3100) و استریمینگ (4000)
+EXPOSE 3100 4000
 
 CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

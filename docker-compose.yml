@@ -32,6 +32,8 @@ services:
         BASE_REGISTRY: "docker.devneeds.ir"
     restart: always
     env_file: .env.production
+    environment:
+      - PORT=3100
     command: bundle exec puma -C config/puma.rb
     networks:
       - external_network
@@ -39,7 +41,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "curl -s --noproxy localhost localhost:3100/health | grep -q 'OK' || exit 1"]
     ports:
-      - '127.0.0.1:3100:3100'
+      - '3100:3100'
     depends_on:
       - db
       - redis
@@ -74,6 +76,8 @@ services:
         BASE_REGISTRY: "docker.devneeds.ir"
     restart: always
     env_file: .env.production
+    environment:
+      - PORT=4000
     command: node ./streaming/index.js
     networks:
       - external_network
@@ -81,7 +85,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "curl -s --noproxy localhost localhost:4000/api/v1/streaming/health | grep -q 'OK' || exit 1"]
     ports:
-      - '127.0.0.1:4000:4000'
+      - '4000:4000'
     depends_on:
       - db
       - redis
